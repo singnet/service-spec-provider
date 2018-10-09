@@ -1,0 +1,6 @@
+{
+  "infuraKey": "1234567890",
+  "network": "kovan",
+  "ipfsEndpoint": "https://ipfs.singularitynet.io:80",
+  "port": 9000
+}

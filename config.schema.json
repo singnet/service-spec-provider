@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "required": [
+    "ipfsEndpoint",
+    "port"
+  ],
+  "properties": {
+    "infuraKey": {
+      "type": "string"
+    },
+    "network": {
+      "type": "string",
+      "enum": [ "mainnet", "ropsten", "kovan", "rinkeby" ]
+    },
+    "ethereumRPCEndpoint": {
+      "type": "string",
+      "format": "uri"
+    },
+    "ipfsEndpoint": {
+      "type": "string",
+      "format": "uri"
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65536
+    }
+  },
+  "oneOf": [
+    { "required": [ "network" ] },
+    { "required": [ "ethereumRPCEndpoint" ] }
+  ]
+}

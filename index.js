@@ -7,6 +7,7 @@ const util = require("util")
 const path = require("path")
 const fs = require("fs")
 
+const Ajv = require("ajv")
 const express = require("express")
 const tar = require("tar-fs")
 const gunzip = require("gunzip-maybe")
@@ -17,20 +18,41 @@ const Web3 = require("web3")
 
 const agentABI = require("singularitynet-platform-contracts/abi/Agent.json")
 
+function getConfig(configPath) {
+  if (typeof configPath !== "undefined") {
+    const configAbsolutePath = path.isAbsolute(configPath) ? configPath : path.join(__dirname, configPath)
+    if (!fs.existsSync(configAbsolutePath)) { throw new Error(`configuration file not found at ${configAbsolutePath}`) }
+    const config = require(configAbsolutePath)
+    const configSchema = require(path.join(__dirname, "config.schema.json"))
+
+    const ajv = new Ajv()
+    if (!ajv.validate(configSchema, config)) { throw new Error(ajv.errorsText()) }
+    return config
+  } else {
+    return {
+      "ipfsEndpoint": "http://localhost:5001",
+      "ethereumRPCEndpoint": "http://localhost:8545",
+      "port": 9000
+    }
+  }
+}
+
+const config = getConfig(process.argv[2])
+
 const METADATA_JSON_DIR = path.join(__dirname, "metadata")
 const MODELS_TAR_DIR = path.join(__dirname, "models", "tar")
 const MODELS_PROTO_DIR = path.join(__dirname, "models", "proto")
 const MODELS_JSON_DIR = path.join(__dirname, "models", "json")
-const ETHEREUM_ENDPOINT = "https://kovan.infura.io/"
+const ETHEREUM_ENDPOINT = typeof config.network !== "undefined" ?
+  `https://${config.network}.infura.io/${config.infuraKey || ""}` :
+  config.ethereumRPCEndpoint
 
-const IPFS_ENDPOINT = "http://ipfs.singularitynet.io:80"
+const IPFS_ENDPOINT = config.ipfsEndpoint
 const IPFS_ENDPOINT_OBJECT = url.parse(IPFS_ENDPOINT)
 if (IPFS_ENDPOINT_OBJECT.protocol === null) { throw new Error(`IPFS_ENDPOINT must include a protocol (ex: "https://"). ${JSON.stringify(IPFS_ENDPOINT)}`) }
 if (IPFS_ENDPOINT_OBJECT.hostname === null) { throw new Error(`IPFS_ENDPOINT must include a hostname (ex: "ipfs.io"). ${JSON.stringify(IPFS_ENDPOINT)}`) }
 if (IPFS_ENDPOINT_OBJECT.port === null) { throw new Error(`IPFS_ENDPOINT must include a port (ex: ":80"). ${JSON.stringify(IPFS_ENDPOINT)}`) }
-
-const PORT = Number.parseInt(process.argv[2])
-if (typeof PORT === "undefined" || !Number.isInteger(PORT)) { throw new Error("Must specify a valid port. Specified port:", PORT) }
+const PORT = config.port
 
 const app = express()
 const ipfs = ipfsAPI(IPFS_ENDPOINT_OBJECT.hostname, IPFS_ENDPOINT_OBJECT.port, { "protocol": IPFS_ENDPOINT_OBJECT.protocol.slice(0, -1) })
