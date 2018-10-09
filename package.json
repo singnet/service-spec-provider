@@ -1,0 +1,18 @@
+{
+  "name": "service-spec-provider",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {},
+  "author": "SingularityNET Foundation",
+  "license": "MIT",
+  "dependencies": {
+    "express": "4.16.3",
+    "gunzip-maybe": "1.4.1",
+    "ipfs-api": "24.0.2",
+    "klaw-sync": "6.0.0",
+    "protobufjs": "6.8.8",
+    "singularitynet-platform-contracts": "0.2.1",
+    "tar-fs": "1.16.3",
+    "web3": "1.0.0-beta.36"
+  }
+}
