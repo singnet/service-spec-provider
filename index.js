@@ -63,8 +63,8 @@ const readFile = util.promisify(fs.readFile)
 const agent = new web3.eth.Contract(agentABI)
 // Keep key=>value cache of initialized agent contracts
 const agents = {}
-// Keep key=>value cache of serviceNames for proto definitions
-const serviceNames = {}
+// Keep key=>value cache of serviceFilePaths, serviceNames for proto definitions
+const services = {}
 
 
 class NotFoundError extends Error {}
@@ -133,23 +133,23 @@ async function getModelURI(metadataJSONHash) {
   return JSON.parse(metadataJSON.toString("utf-8")).modelURI
 }
 
-async function getProtoServiceName(metadataJSONHash, protoPath) {
-  if (!serviceNames.hasOwnProperty(metadataJSONHash)) {
-    const files = await Promise.all(klaw(protoPath, { "nodir": true }).map(file => readFile(file.path, "utf8")))
-    const services = files
-      .map(file =>
-        file.split(os.EOL)
-          .filter(line =>
-            line.startsWith("service")
-          )
+async function getProtoServiceSpec(metadataJSONHash, protoPath) {
+  if (!services.hasOwnProperty(metadataJSONHash)) {
+    const files = await Promise.all(klaw(protoPath, { "nodir": true })
+      .map(async file => await Promise.all([ path.relative(__dirname, file.path), readFile(file.path, "utf8") ])))
+    const serviceEntries = await files
+      .map(([ filePath, fileBody ]) =>
+        fileBody.split(os.EOL)
+          .filter(line => line.startsWith("service"))
+          .map(line => ({ filePath, "serviceName": line.split(" ")[1] }))
       ).reduce((acc, cur) => acc.concat(cur), [])
-    if (services.length > 1) { throw new BadRequestError("Service spec has more than 1 service") }
-    else if (services.length < 1) { throw new BadRequestError("No service in service spec") }
+    if (serviceEntries.length > 1) { throw new BadRequestError("Service spec has more than 1 service") }
+    else if (serviceEntries.length < 1) { throw new BadRequestError("No service in service spec") }
     else {
-      serviceNames[metadataJSONHash] = services[0].split(" ")[1]
+      services[metadataJSONHash] = serviceEntries[0]
     }
   }
-  return serviceNames[metadataJSONHash]
+  return services[metadataJSONHash]
 }
 
 async function getModelJSON(metadataJSONHash) {
@@ -164,8 +164,8 @@ async function getModelJSON(metadataJSONHash) {
       }
       await untar(tarPath, protoPath)
     }
-    const serviceName = await getProtoServiceName(metadataJSONHash, protoPath)
-    const root = await protobuf.load(path.join(protoPath, `${serviceName}.proto`))
+    const service = await getProtoServiceSpec(metadataJSONHash, protoPath)
+    const root = await protobuf.load(path.join(__dirname, service.filePath))
     fs.writeFileSync(jsonPath, JSON.stringify(root), "utf8")
   }
   return fs.readFileSync(jsonPath, "utf8")
