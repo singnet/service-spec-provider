@@ -17,6 +17,8 @@ const ipfsAPI = require("ipfs-api")
 const Web3 = require("web3")
 
 const agentABI = require("singularitynet-platform-contracts/abi/Agent.json")
+const registryABI = require("singularitynet-platform-contracts/abi/Registry.json")
+const registryNetworks = require("singularitynet-platform-contracts/networks/Registry.json")
 
 function getConfig(configPath) {
   if (typeof configPath !== "undefined") {
@@ -43,6 +45,12 @@ const METADATA_JSON_DIR = path.join(__dirname, "metadata")
 const MODELS_TAR_DIR = path.join(__dirname, "models", "tar")
 const MODELS_PROTO_DIR = path.join(__dirname, "models", "proto")
 const MODELS_JSON_DIR = path.join(__dirname, "models", "json")
+
+if (!fs.existsSync(METADATA_JSON_DIR)) { fs.mkdirSync(METADATA_JSON_DIR) }
+if (!fs.existsSync(MODELS_TAR_DIR)) { fs.mkdirSync(MODELS_TAR_DIR) }
+if (!fs.existsSync(MODELS_PROTO_DIR)) { fs.mkdirSync(MODELS_PROTO_DIR) }
+if (!fs.existsSync(MODELS_JSON_DIR)) { fs.mkdirSync(MODELS_JSON_DIR) }
+
 const ETHEREUM_ENDPOINT = typeof config.network !== "undefined" ?
   `https://${config.network}.infura.io/${config.infuraKey || ""}` :
   config.ethereumRPCEndpoint
@@ -60,6 +68,7 @@ const web3 = new Web3(new Web3.providers.HttpProvider(ETHEREUM_ENDPOINT))
 
 const readFile = util.promisify(fs.readFile)
 
+const registry = new web3.eth.Contract(registryABI)
 const agent = new web3.eth.Contract(agentABI)
 // Keep key=>value cache of initialized agent contracts
 const agents = {}
@@ -97,7 +106,7 @@ function untar(sourceFile, destDir) {
 }
 
 async function getContractMetadataURI(address) {
-  if (!web3.utils.isAddress(address) && address !== "test") {
+  if (!web3.utils.isAddress(address)) {
     throw new BadRequestError(`${address} is not a valid Ethereum address`)
   }
 
@@ -151,8 +160,8 @@ async function getProtoServiceSpec(metadataJSONHash, protoPath) {
   return services[metadataJSONHash]
 }
 
-async function getModelJSON(metadataJSONHash) {
-  const jsonPath = path.join(MODELS_JSON_DIR, metadataJSONHash)
+async function getModelJSON(metadataJSONHash, orgName, serviceName) {
+  const jsonPath = path.join(MODELS_JSON_DIR, orgName, serviceName)
   if (!fs.existsSync(jsonPath)) {
     const protoPath = path.join(MODELS_PROTO_DIR, metadataJSONHash)
     if (!fs.existsSync(protoPath)) {
@@ -163,18 +172,33 @@ async function getModelJSON(metadataJSONHash) {
       }
       await untar(tarPath, protoPath)
     }
-    const service = await getProtoServiceSpec(metadataJSONHash, protoPath)
+    const services = await getProtoServiceSpec(metadataJSONHash, protoPath)
+    const service = services.find(serviceObject => serviceObject.serviceName === serviceName)
     const root = await protobuf.load(path.join(__dirname, service.filePath))
+    if (!fs.existsSync(path.join(MODELS_JSON_DIR, orgName))) { fs.mkdirSync(path.join(MODELS_JSON_DIR, orgName)) }
     fs.writeFileSync(jsonPath, JSON.stringify(root), "utf8")
   }
   return fs.readFileSync(jsonPath, "utf8")
 }
 
-
-app.get("/:address", async (req, res) => {
+app.get("/test", async (req, res) => {
   try {
-    const metadataJSONHash = req.params.address === "test" ? "test" : uriToHash(await getContractMetadataURI(req.params.address))
-    const modelJSON = await getModelJSON(metadataJSONHash)
+    const modelJSON = await getModelJSON("test", "test", "test")
+    return res.type("json").status(200).send(modelJSON)
+  } catch(e) {
+    return res.type("json").status(getErrorStatusCode(e)).send({ "error": e.message })
+  }
+})
+
+app.get("/:orgName/:serviceName", async (req, res) => {
+  try {
+    if (registry.options.address === null) {
+      const networkId = await web3.eth.net.getId()
+      registry.options.address = registryNetworks[networkId.toString()].address
+    }
+    const serviceRegistration = await registry.methods.getServiceRegistrationByName(web3.utils.fromAscii(req.params.orgName), web3.utils.fromAscii(req.params.serviceName)).call() 
+    const metadataJSONHash = uriToHash(await getContractMetadataURI(serviceRegistration.agentAddress))
+    const modelJSON = await getModelJSON(metadataJSONHash, req.params.orgName, req.params.serviceName)
     return res.type("json").status(200).send(modelJSON)
   } catch(e) {
     return res.type("json").status(getErrorStatusCode(e)).send({ "error": e.message })
