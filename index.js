@@ -143,10 +143,9 @@ async function getProtoServiceSpec(metadataJSONHash, protoPath) {
           .filter(line => line.startsWith("service"))
           .map(line => ({ filePath, "serviceName": line.split(" ")[1] }))
       ).reduce((acc, cur) => acc.concat(cur), [])
-    if (serviceEntries.length > 1) { throw new BadRequestError("Service spec has more than 1 service") }
-    else if (serviceEntries.length < 1) { throw new BadRequestError("No service in service spec") }
+    if (serviceEntries.length < 1) { throw new BadRequestError("No service in service spec") }
     else {
-      services[metadataJSONHash] = serviceEntries[0]
+      services[metadataJSONHash] = serviceEntries
     }
   }
   return services[metadataJSONHash]
