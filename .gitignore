@@ -1,7 +1,7 @@
-config.json
+config/config.json
 node_modules
-/metadata
-/models/tar/*
-!/models/tar/test
-/models/proto
-/models/json
+storage/metadata
+storage/models/tar/*
+!storage/models/tar/test
+storage/models/proto
+storage/models/json

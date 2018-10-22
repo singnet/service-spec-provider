@@ -2,8 +2,10 @@
   "name": "service-spec-provider",
   "version": "1.0.0",
   "description": "",
-  "main": "./index.js",
-  "scripts": {},
+  "main": "./app/index.js",
+  "scripts": {
+    "start": "node . ./config/config.json"
+  },
   "author": "SingularityNET Foundation",
   "license": "MIT",
   "dependencies": {
