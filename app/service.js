@@ -1,14 +1,17 @@
 const path = require("path")
-const fs = require("fs")
+const { writeFileSync, existsSync } = require("fs")
+const os = require("os")
 
 const Web3 = require("web3")
+const klaw = require("klaw-sync")
+const protobuf = require("protobufjs")
 
 const agentABI = require("singularitynet-platform-contracts/abi/Agent.json")
 const registryABI = require("singularitynet-platform-contracts/abi/Registry.json")
 const registryNetworks = require("singularitynet-platform-contracts/networks/Registry.json")
 
 const { network, infuraKey, ethereumRPCEndpoint, MODELS_JSON_DIR, MODELS_PROTO_DIR } = require("./config.js")
-const { untar, uriToHash } = require("./utils.js")
+const { readFile, untar, uriToHash } = require("./utils.js")
 const { getServiceModelTarStream } = require("./ipfs.js")
 const { BadRequestError, NotFoundError } = require("./errors.js")
 
@@ -76,55 +79,52 @@ async function getServiceRegistration(orgName, serviceName) {
   return await contract.methods.getServiceRegistrationByName(web3.utils.fromAscii(orgName), web3.utils.fromAscii(serviceName)).call()
 }
 
-/*
-async function getProtoServiceSpec(metadataJSONHash, protoPath) {
-  if (!services.hasOwnProperty(metadataJSONHash)) {
-    const files = await Promise.all(klaw(protoPath, { "nodir": true })
-      .map(async file => await Promise.all([ path.relative(__dirname, file.path), readFile(file.path, "utf8") ])))
-    const serviceEntries = await files
-      .map(([ filePath, fileBody ]) =>
-        fileBody.split(os.EOL)
-          .filter(line => line.startsWith("service"))
-          .map(line => ({ filePath, "serviceName": line.split(" ")[1] }))
-      ).reduce((acc, cur) => acc.concat(cur), [])
-    if (serviceEntries.length < 1) { throw new BadRequestError("No service in service spec") }
-    else {
-      services[metadataJSONHash] = serviceEntries
-    }
+async function isServiceFile(path) {
+  const file = await readFile(path, "utf8")
+  return file.split(os.EOL).some(line => line.startsWith("service"))
+}
+
+async function loadServiceSpecJSONsFromProto(metadataJSONHash) {
+  const filePaths = klaw(path.join(MODELS_PROTO_DIR, metadataJSONHash), { "nodir": true })
+    .map(file => file.path)
+  const pathsWithServices = await Promise.all(filePaths.map(async(path) => Promise.all([ path, await isServiceFile(path) ])))
+  const filteredPaths = pathsWithServices.filter(([ , isService ]) => isService).map(([ path ]) => path)
+  const serviceEntries = Promise.all(filteredPaths.map(path => protobuf.load(path)))
+  return serviceEntries
+}
+
+async function getServiceMetadataJSONHash(...args) {
+  let orgName, serviceName, agentAddress
+  if (typeof args[1] !== "undefined") {
+    [ orgName, serviceName ] = args
+    const serviceRegistration = await getServiceRegistration(orgName, serviceName)
+    agentAddress = serviceRegistration.agentAddress
+  } else if (web3.utils.isAddress(args[0])) {
+    [ agentAddress ] = args
+  } else {
+    throw new BadRequestError("Must provide either an orgName, serviceName or an agentAddress")
   }
-  return services[metadataJSONHash]
-}
-*/
-
-function getServicesAtMetadataHash(metadataJSONHash) {
-  const services = {}
-  return [ metadataJSONHash, services ]
+  const metadataJSONHash = await getContractMetadataHash(agentAddress)
+  return metadataJSONHash
 }
 
-async function getServiceSpecJSON(orgName, serviceName) {
-  const serviceRegistration = await getServiceRegistration(orgName, serviceName)
-  const metadataJSONHash = await getContractMetadataHash(serviceRegistration.agentAddress)
-
-  const jsonPath = path.join(MODELS_JSON_DIR, orgName, serviceName)
-  if (!fs.existsSync(jsonPath)) {
+async function getServiceSpecJSON(metadataJSONHash) {
+  const jsonPath = path.join(MODELS_JSON_DIR, metadataJSONHash)
+  if (!existsSync(jsonPath)) {
     const protoPath = path.join(MODELS_PROTO_DIR, metadataJSONHash)
-    if (!fs.existsSync(protoPath)) {
+    if (!existsSync(protoPath)) {
       const stream = await getServiceModelTarStream(metadataJSONHash)
-      untar(stream, protoPath)
+      await untar(stream, protoPath)
     }
-    const services = await getServicesAtMetadataHash(metadataJSONHash)
-    /*
-    const services = await getProtoServiceSpec(metadataJSONHash, protoPath)
-    const service = services.find(serviceObject => serviceObject.serviceName === serviceName)
-    const root = await protobuf.load(path.join(__dirname, service.filePath))
-    if (!fs.existsSync(path.join(MODELS_JSON_DIR, orgName))) { fs.mkdirSync(path.join(MODELS_JSON_DIR, orgName)) }
-    fs.writeFileSync(jsonPath, JSON.stringify(root), "utf8")
-    */
+    const services = await loadServiceSpecJSONsFromProto(metadataJSONHash)
+    writeFileSync(jsonPath, JSON.stringify(services), "utf8")
   }
-  //return fs.readFileSync(jsonPath, "utf8")
-}
+
+  return await readFile(jsonPath, "utf8")
+} 
 
 
 module.exports = {
+  getServiceMetadataJSONHash,
   getServiceSpecJSON
 }

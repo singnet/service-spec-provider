@@ -1,5 +1,5 @@
 const fs = require("fs")
-// const util = require("util")
+const util = require("util")
 
 const tar = require("tar-fs")
 const gunzip = require("gunzip-maybe")
@@ -23,7 +23,7 @@ function getErrorStatusCode(e) {
     case "BadRequestError":
       return 400
     default:
-      console.error(e.message)
+      console.error(e)
       return 500
   }
 }
@@ -32,13 +32,17 @@ function uriToHash(uri) {
   return uri.split("/").slice(-1).join("") 
 }
 
-function untar(sourceStream, destDir) {
+async function untar(sourceStream, destDir) {
   const stream = sourceStream.pipe(gunzip()).pipe(tar.extract(destDir))
-  return new Promise((resolve, reject) => {
-    stream.on("end", () => { resolve("end") })
-    stream.on("finish", () => { resolve("finish") })
-    stream.on("error", error => { reject(error) })
-  })
+  try {
+    await new Promise((resolve, reject) => {
+      stream.on("end", () => { resolve("end") })
+      stream.on("finish", () => { resolve("finish") })
+      stream.on("error", error => { reject(error) })
+    })
+  } catch(e) {
+    throw new Error(e)
+  }
 }
 
 module.exports = {
@@ -46,5 +50,5 @@ module.exports = {
   getErrorStatusCode,
   uriToHash,
   untar,
-  //"readFile": util.promisify(fs.readFile)
+  "readFile": util.promisify(fs.readFile)
 }
