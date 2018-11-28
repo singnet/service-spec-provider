@@ -6,14 +6,13 @@ const Web3 = require("web3")
 const klaw = require("klaw-sync")
 const protobuf = require("protobufjs")
 
-const agentABI = require("singularitynet-platform-contracts/abi/Agent.json")
 const registryABI = require("singularitynet-platform-contracts/abi/Registry.json")
 const registryNetworks = require("singularitynet-platform-contracts/networks/Registry.json")
 
 const { network, infuraKey, ethereumRPCEndpoint, MODELS_JSON_DIR, MODELS_PROTO_DIR } = require("./config.js")
 const { readFile, untar, uriToHash } = require("./utils.js")
 const { getServiceModelTarStream } = require("./ipfs.js")
-const { BadRequestError, NotFoundError } = require("./errors.js")
+const { BadRequestError } = require("./errors.js")
 
 
 const ETHEREUM_ENDPOINT = typeof network !== "undefined" ?
@@ -23,7 +22,6 @@ const ETHEREUM_ENDPOINT = typeof network !== "undefined" ?
 
 const web3 = new Web3(new Web3.providers.HttpProvider(ETHEREUM_ENDPOINT))
 
-const agent = withAddress(new web3.eth.Contract(agentABI))
 const registry = withAddress(new web3.eth.Contract(registryABI))
 
 
@@ -60,23 +58,9 @@ function withAddress (contract) {
   }
 }
 
-async function getContractMetadataHash(address) {
-  try {
-    const contract = await agent(address)
-    const metadataURI = await contract.methods.metadataURI().call() 
-    return uriToHash(metadataURI)
-  } catch(e) {
-    if (e.message.startsWith("Returned values aren't valid")) {
-      throw new NotFoundError(`Error while trying to get metadataURI for address ${address}. ${address} is probably not an instance of an Agent contract. ${e}`)
-    } else {
-      throw new Error(e)
-    } 
-  }
-}
-
 async function getServiceRegistration(orgName, serviceName) {
   const contract = await registry(registryNetworks)
-  return await contract.methods.getServiceRegistrationByName(web3.utils.fromAscii(orgName), web3.utils.fromAscii(serviceName)).call()
+  return contract.methods.getServiceRegistrationByName(web3.utils.fromAscii(orgName), web3.utils.fromAscii(serviceName)).call()
 }
 
 async function isServiceFile(path) {
@@ -93,19 +77,9 @@ async function loadServiceSpecJSONsFromProto(metadataJSONHash) {
   return serviceEntries
 }
 
-async function getServiceMetadataJSONHash(...args) {
-  let orgName, serviceName, agentAddress
-  if (typeof args[1] !== "undefined") {
-    [ orgName, serviceName ] = args
-    const serviceRegistration = await getServiceRegistration(orgName, serviceName)
-    agentAddress = serviceRegistration.agentAddress
-  } else if (web3.utils.isAddress(args[0])) {
-    [ agentAddress ] = args
-  } else {
-    throw new BadRequestError("Must provide either an orgName, serviceName or an agentAddress")
-  }
-  const metadataJSONHash = await getContractMetadataHash(agentAddress)
-  return metadataJSONHash
+async function getServiceMetadataJSONHash(orgName, serviceName) {
+  const serviceRegistration = await getServiceRegistration(orgName, serviceName)
+  return uriToHash(web3.utils.hexToUtf8(serviceRegistration.metadataURI))
 }
 
 async function getServiceSpecJSON(metadataJSONHash) {

@@ -7,7 +7,6 @@ const { port } = require("./config.js")
 const { getErrorStatusCode } = require("./utils.js")
 const { getServiceMetadataJSONHash, getServiceSpecJSON } = require("./service.js")
 
-
 const app = express()
 
 app.use((req, res, next) => {
@@ -18,16 +17,6 @@ app.use((req, res, next) => {
 app.get("/test", async (req, res) => {
   try {
     const response = await getServiceSpecJSON("test")
-    return res.type("json").status(200).send(response)
-  } catch(e) {
-    return res.type("json").status(getErrorStatusCode(e)).send({ "error": e.message })
-  }
-})
-
-app.get("/:agentAddress", async (req, res) => {
-  try {
-    const serviceMetadataJSONHash = await getServiceMetadataJSONHash(req.params.agentAddress)
-    const response = await getServiceSpecJSON(serviceMetadataJSONHash)
     return res.type("json").status(200).send(response)
   } catch(e) {
     return res.type("json").status(getErrorStatusCode(e)).send({ "error": e.message })
