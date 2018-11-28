@@ -1,0 +1,130 @@
+const path = require("path")
+const { writeFileSync, existsSync } = require("fs")
+const os = require("os")
+
+const Web3 = require("web3")
+const klaw = require("klaw-sync")
+const protobuf = require("protobufjs")
+
+const agentABI = require("singularitynet-platform-contracts/abi/Agent.json")
+const registryABI = require("singularitynet-platform-contracts/abi/Registry.json")
+const registryNetworks = require("singularitynet-platform-contracts/networks/Registry.json")
+
+const { network, infuraKey, ethereumRPCEndpoint, MODELS_JSON_DIR, MODELS_PROTO_DIR } = require("./config.js")
+const { readFile, untar, uriToHash } = require("./utils.js")
+const { getServiceModelTarStream } = require("./ipfs.js")
+const { BadRequestError, NotFoundError } = require("./errors.js")
+
+
+const ETHEREUM_ENDPOINT = typeof network !== "undefined" ?
+  `https://${network}.infura.io/${infuraKey || ""}` :
+  ethereumRPCEndpoint
+
+
+const web3 = new Web3(new Web3.providers.HttpProvider(ETHEREUM_ENDPOINT))
+
+const agent = withAddress(new web3.eth.Contract(agentABI))
+const registry = withAddress(new web3.eth.Contract(registryABI))
+
+
+function withAddress (contract) {
+  const cache = {}
+  let networkId = undefined
+
+  return async (addressSource) => {
+    if (typeof networkId === "undefined") {
+      const networkIdInt = await web3.eth.net.getId()
+      networkId = networkIdInt.toString()
+    }
+
+    let address
+
+    if (web3.utils.isAddress(addressSource)) {
+      address = addressSource
+    } else if (typeof addressSource === "object" && addressSource.hasOwnProperty(networkId)) {
+      address = addressSource[networkId].address
+    } else {
+      throw new BadRequestError(`${addressSource} must be either a valid Ethereum address or a "networks" object with { [networkId]: address }`)
+    }
+
+    if (!cache.hasOwnProperty(networkId)) {
+      cache[networkId] = {}
+    }
+
+    if (!cache.hasOwnProperty(address)) {
+      cache[networkId][address] = contract.clone()
+      cache[networkId][address].options.address = address
+    }
+
+    return cache[networkId][address]
+  }
+}
+
+async function getContractMetadataHash(address) {
+  try {
+    const contract = await agent(address)
+    const metadataURI = await contract.methods.metadataURI().call() 
+    return uriToHash(metadataURI)
+  } catch(e) {
+    if (e.message.startsWith("Returned values aren't valid")) {
+      throw new NotFoundError(`Error while trying to get metadataURI for address ${address}. ${address} is probably not an instance of an Agent contract. ${e}`)
+    } else {
+      throw new Error(e)
+    } 
+  }
+}
+
+async function getServiceRegistration(orgName, serviceName) {
+  const contract = await registry(registryNetworks)
+  return await contract.methods.getServiceRegistrationByName(web3.utils.fromAscii(orgName), web3.utils.fromAscii(serviceName)).call()
+}
+
+async function isServiceFile(path) {
+  const file = await readFile(path, "utf8")
+  return file.split(os.EOL).some(line => line.startsWith("service"))
+}
+
+async function loadServiceSpecJSONsFromProto(metadataJSONHash) {
+  const filePaths = klaw(path.join(MODELS_PROTO_DIR, metadataJSONHash), { "nodir": true })
+    .map(file => file.path)
+  const pathsWithServices = await Promise.all(filePaths.map(async(path) => Promise.all([ path, await isServiceFile(path) ])))
+  const filteredPaths = pathsWithServices.filter(([ , isService ]) => isService).map(([ path ]) => path)
+  const serviceEntries = Promise.all(filteredPaths.map(path => protobuf.load(path)))
+  return serviceEntries
+}
+
+async function getServiceMetadataJSONHash(...args) {
+  let orgName, serviceName, agentAddress
+  if (typeof args[1] !== "undefined") {
+    [ orgName, serviceName ] = args
+    const serviceRegistration = await getServiceRegistration(orgName, serviceName)
+    agentAddress = serviceRegistration.agentAddress
+  } else if (web3.utils.isAddress(args[0])) {
+    [ agentAddress ] = args
+  } else {
+    throw new BadRequestError("Must provide either an orgName, serviceName or an agentAddress")
+  }
+  const metadataJSONHash = await getContractMetadataHash(agentAddress)
+  return metadataJSONHash
+}
+
+async function getServiceSpecJSON(metadataJSONHash) {
+  const jsonPath = path.join(MODELS_JSON_DIR, metadataJSONHash)
+  if (!existsSync(jsonPath)) {
+    const protoPath = path.join(MODELS_PROTO_DIR, metadataJSONHash)
+    if (!existsSync(protoPath)) {
+      const stream = await getServiceModelTarStream(metadataJSONHash)
+      await untar(stream, protoPath)
+    }
+    const services = await loadServiceSpecJSONsFromProto(metadataJSONHash)
+    writeFileSync(jsonPath, JSON.stringify(services), "utf8")
+  }
+
+  return await readFile(jsonPath, "utf8")
+} 
+
+
+module.exports = {
+  getServiceMetadataJSONHash,
+  getServiceSpecJSON
+}
