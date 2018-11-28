@@ -5,7 +5,7 @@ const fs = require("fs")
 const ipfsAPI = require("ipfs-api")
 
 const { ipfsEndpoint, METADATA_JSON_DIR, MODELS_TAR_DIR } = require("./config.js")
-const { withFsCache, uriToHash } = require("./utils.js")
+const { withFsCache } = require("./utils.js")
 
 
 const IPFS_ENDPOINT = ipfsEndpoint
@@ -22,7 +22,7 @@ async function getModelURI(metadataJSONHash) {
   const metadataJSONPath = path.join(METADATA_JSON_DIR, metadataJSONHash)
   try {
     const metadataJSON = await withFsCache(metadataJSONPath, ipfs.cat)(metadataJSONHash)
-    return JSON.parse(metadataJSON.toString("utf-8")).modelURI
+    return JSON.parse(metadataJSON.toString("utf-8"))["model_ipfs_hash"]
   } catch(e) {
     throw new Error(`Failed to get object ${metadataJSONHash} from IPFS endpoint ${IPFS_ENDPOINT}. Error: ${e.message}`)
   }
@@ -30,7 +30,7 @@ async function getModelURI(metadataJSONHash) {
 
 async function getServiceModelTarStream(metadataJSONHash) {
   const modelTarPath = path.join(MODELS_TAR_DIR, metadataJSONHash)
-  const modelTar = await withFsCache(modelTarPath, ipfs.cat, fs.createReadStream)(uriToHash(await getModelURI(metadataJSONHash)))
+  const modelTar = await withFsCache(modelTarPath, ipfs.cat, fs.createReadStream)(await getModelURI(metadataJSONHash))
   return modelTar
 }
 
