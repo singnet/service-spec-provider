@@ -58,9 +58,9 @@ function withAddress (contract) {
   }
 }
 
-async function getServiceRegistration(orgName, serviceName) {
+async function getServiceRegistration(orgId, serviceId) {
   const contract = await registry(registryNetworks)
-  return contract.methods.getServiceRegistrationByName(web3.utils.fromAscii(orgName), web3.utils.fromAscii(serviceName)).call()
+  return contract.methods.getServiceRegistrationById(web3.utils.fromAscii(orgId), web3.utils.fromAscii(serviceId)).call()
 }
 
 async function isServiceFile(path) {
@@ -77,8 +77,8 @@ async function loadServiceSpecJSONsFromProto(metadataJSONHash) {
   return serviceEntries
 }
 
-async function getServiceMetadataJSONHash(orgName, serviceName) {
-  const serviceRegistration = await getServiceRegistration(orgName, serviceName)
+async function getServiceMetadataJSONHash(orgId, serviceId) {
+  const serviceRegistration = await getServiceRegistration(orgId, serviceId)
   return uriToHash(web3.utils.hexToUtf8(serviceRegistration.metadataURI))
 }
 
