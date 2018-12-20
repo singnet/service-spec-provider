@@ -23,9 +23,9 @@ app.get("/test", async (req, res) => {
   }
 })
 
-app.get("/:orgName/:serviceName", async (req, res) => {
+app.get("/:orgId/:serviceId", async (req, res) => {
   try {
-    const serviceMetadataJSONHash = await getServiceMetadataJSONHash(req.params.orgName, req.params.serviceName)
+    const serviceMetadataJSONHash = await getServiceMetadataJSONHash(req.params.orgId, req.params.serviceId)
     const response = await getServiceSpecJSON(serviceMetadataJSONHash)
     return res.type("json").status(200).send(response)
   } catch(e) {
