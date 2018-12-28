@@ -1,4 +1,4 @@
-FROM ubuntu:latest
+FROM ubuntu:18.04
 RUN apt-get update
 RUN apt-get install npm nodejs git nginx -y
 RUN mkdir -p /root/service-spec-provider
@@ -10,5 +10,4 @@ RUN cp protobufjs.conf /etc/nginx/sites-enabled/
 RUN cp protobufjs.conf /etc/nginx/sites-available/
 RUN npm install
 CMD ["sh", "entrypoint.sh"]
-#CMD service nginx start && node app/index.js config/config.json
-#CMD ["node", "app/index.js", "config/config.json"]
+
