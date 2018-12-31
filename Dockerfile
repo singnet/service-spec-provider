@@ -10,4 +10,3 @@ RUN cp protobufjs.conf /etc/nginx/sites-enabled/
 RUN cp protobufjs.conf /etc/nginx/sites-available/
 RUN npm install
 CMD ["sh", "entrypoint.sh"]
-
