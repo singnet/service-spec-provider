@@ -5,6 +5,7 @@ const os = require("os")
 const Web3 = require("web3")
 const klaw = require("klaw-sync")
 const protobuf = require("protobufjs")
+protobuf.parse.defaults.keepCase = true;
 
 const registryABI = require("singularitynet-platform-contracts/abi/Registry.json")
 const registryNetworks = require("singularitynet-platform-contracts/networks/Registry.json")
